@@ -38,10 +38,10 @@
                        (map #(map str/trim (str/split % #"\|"))))]
     (map #(zipmap (map keyword ks) %) vs)))
 (defn map->row [m]
-  (assoc {:app-start (:app_start m)
-          :app-end (:app_end m)
-          :sys-start (:sys_start m)
-          :sys-end (:sys_end m)}
+  (assoc {:app-start (or (:application_time_start m) (:app_start m))
+          :app-end (or (:application_time_end m) (:app_end m))
+          :sys-start (or (:system_time_start m) (:sys_start m))
+          :sys-end (or (:system_time_end m) (:sys_end m))}
          :row m))
 
 ;; row_start, row_end (system time aliases)
@@ -51,7 +51,7 @@
 (def mouse-coordinates (r/atom {:x 100 :y 100}))
 
 (defn data= [a b]
-  (apply = (map #(dissoc % "row_start" "row_end" "system_time_end" "system_time_start" "application_time_end" "application_time_start" :sys_start :sys_end :app_start :app_end)
+  (apply = (map #(dissoc % "row_start" "row_end" "system_time_end" "system_time_start" "application_time_end" "application_time_start" :sys_start :sys_end :app_start :app_end :application_time_start :application_time_end :system_time_start :system_time_end)
                 [a b])))
 
 
@@ -87,7 +87,7 @@
                                                                    :else "")}}
                                   (for [k ks] [:td {:style {:border "1px solid black" :padding "4pt"}} (get j k)])])))
      ]
-    [:div 
+    [:div
 
      ;;[:p "x: " (:x @mouse-coordinates)]
      ;;[:p "y: " (:y @mouse-coordinates)]
@@ -167,7 +167,7 @@
 (defn normalize-entries [w h xs]
   (let [xs (sort-by (juxt :sys-start :app-start) xs) ;; core1/simplified draw order needs :asc sys-then-app
         fills (greyscale (count xs))
-        sys (sort (distinct (concat (map :sys-start xs) (map :sys-end xs)))) 
+        sys (sort (distinct (concat (map :sys-start xs) (map :sys-end xs))))
         sys-map (zipmap sys (range))
         cell-w (/ w (dec (count sys)) 1.0)
         app (sort (distinct (concat (map :app-start xs) (map :app-end xs))))
@@ -261,4 +261,3 @@
    ])
 
 (rdom/render [my-component2] (.getElementById js/document "app"))
-
