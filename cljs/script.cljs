@@ -59,16 +59,16 @@
   [:div
    {:onMouseMove (fn [event]
                    (reset! mouse-coordinates {:x (.-clientX event) :y (.-clientY event)}))}
-   [:div {:style {:display "grid" :grid-template-columns (if (:collapsed @state) "30% 70%" "30% 30% 40%") :grid-template-rows "80vh"}}
+   [:p [:a {:href "#"
+            :onMouseUp #(swap! state #(update % :collapsed not))
+            } (if (:collapsed @state)
+                "Show Textarea"
+                "Hide Textarea")]]
+   [:div {:style {:display "grid" :grid-template-columns (if (:collapsed @state) "50% 50%" "30% 30% 40%") :grid-template-rows "80vh"}}
     (when-not (:collapsed @state) [:div [:textarea {:style {:width "95%" :height "95%" :overflow-x "scroll" :overflow-y "scroll"}
                                                     :on-change #(reset! state (assoc @state :t (.. % -target -value)))}
                                          (:t @state)]])
     [:div {:style {:overflow-x "auto" :overflow-y "auto"}}
-     [:p [:a {:href "#"
-              :onMouseUp #(swap! state #(update % :collapsed not))
-              } (if (:collapsed @state)
-                  "Show Textarea"
-                  "Hide Textarea")]]
      (let [d (table-string->maps (:t @state))
            ks (keys (first d))]
        (into [:table {:style {:border "1px solid black" :border-collapse "collapse"}} [:tr (for [h ks] [:th {:style {:border "1px solid black" :padding "4pt"}} h])]]
@@ -251,13 +251,13 @@
    {:width "100%" :height "80%" :viewBox (str "-30 -30 " width " " height)}
    (history->hiccup
      (/ width 1.2 1.0)
-     (/ height 1.2 1.0)
+     (/ height 1.4 1.0)
      color-att
      history)])
 
 (defn my-component2 []
   [:div
-   [my-component (partial history->tt-vt 600 600 :fill)]
+   [my-component (partial history->tt-vt 400 400 :fill)]
    ])
 
 (rdom/render [my-component2] (.getElementById js/document "app"))
