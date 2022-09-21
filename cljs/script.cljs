@@ -1,6 +1,41 @@
 (require '[reagent.core :as r]
          '[reagent.dom :as rdom]
          '[clojure.string :as str])
+
+
+(defn common-subs [a-str b-str]
+  (loop [[a & as] a-str
+         [b & bs] b-str
+         i 0]
+    (if (= a b)
+      (recur as bs (inc i))
+      (subs a-str 0 i))))
+
+(defn truncate-sortable-strings [ss]
+  (let [ssn (into {} (map #(vector % %) ss))
+        o (map first (sort-by second ssn))
+        sf (loop [in ssn
+                  out {}]
+             (if (= (count in) 1)
+               (sort (map second (merge out in)))
+               (let [shortest-count (if (= 0 (count out))
+                                      10 ;; ISO date
+                                      (reduce min (map count (vals out))))
+                     [longest-k longest-str] (last (sort-by (comp count second) in))
+                     longest-str* (subs longest-str 0 (max 0 (dec (count longest-str))))
+                     in* (assoc in longest-k longest-str*)
+                     all (merge in* out)
+                     eq (= o (map first (sort-by second all)))
+                     no-dupes (= (count (vals all)) (count (into #{} (vals all))))]
+                 (if (and (<= shortest-count (count longest-str*)) eq no-dupes)
+                   (recur in* out)
+                   (recur (dissoc in longest-k) (assoc out longest-k longest-str))
+                   ))))]
+    (map #(vector %2 (subs %1 (count %2))) ss sf)))
+;; TODO prevent over-truncation? e.g. bcd011 should ideally shorted to bcd0
+;;(truncate-sortable-strings ["bce456" "abcd789" "abc" "abce0123" "bcd123" "bcf" "bcd011"])
+;;=>("abc" "abcd" "abce" "bcd" "bcd1" "bce" "bcf")
+
 (def sample1 "filll | app_start | app_end | sys_start | sys_end
              ------------+-------------+-------
              red | 3 | 4 | 0 | 1
@@ -9,18 +44,18 @@
              orange | 2 | 4 | 1 | 2
              lightpink | 1 | 2 | 1 | 2")
 
-(def sample "product_id	| sys_start |	sys_end |	app_start |	app_end |	price
-            1002 |	2019-01-01 |	2019-02-09|	2019-01-05|	9999-12-31|	100
-            1002|	2019-02-09|	9999-12-31|	2019-01-05|	2019-01-10|	100
-            1002|	2019-02-09|	2019-03-02|	2019-01-10|	2019-02-08|	100
-            1002|	2019-02-09|	2019-02-10|	2019-02-08|	9999-12-31|	105
-            1002|	2019-02-10|	2019-03-02|	2019-02-08|	2019-02-15|	105
-            1002|	2019-02-10|	2019-02-12|	2019-02-15|	2019-02-17|	105
-            1002|	2019-02-10|	2019-02-12|	2019-02-17|	9999-12-31|	103
-            1002|	2019-02-12|	2019-03-02|	2019-02-15|	9999-12-31|	102
-            1002|	2019-03-02|	2019-04-01|	2019-01-10|	9999-12-31|	103
-            1002|	2019-04-01|	9999-12-31|	2019-01-10|	2019-04-02|	103
-            1002|	2019-04-01|	9999-12-31|	2019-04-02|	9999-12-31|	111")
+(def sample "id	| sys_start |	sys_end |	app_start |	app_end |	price
+            1002 |	2019-01-01 00:00 |	2019-02-09 00:00|	2019-01-05|	9999-12-31|	100
+            1002|	2019-02-09 00:00|	9999-12-31 00:00|	2019-01-05|	2019-01-10|	100
+            1002|	2019-02-09 00:00|	2019-03-02 00:00|	2019-01-10|	2019-02-08|	100
+            1002|	2019-02-09 00:00|	2019-02-10 00:00|	2019-02-08|	9999-12-31|	105
+            1002|	2019-02-10 00:00|	2019-03-02 00:00|	2019-02-08|	2019-02-15|	105
+            1002|	2019-02-10 00:00|	2019-02-12 00:00|	2019-02-15|	2019-02-17|	105
+            1002|	2019-02-10 00:00|	2019-02-12 00:00|	2019-02-17|	9999-12-31|	103
+            1002|	2019-02-12 00:00|	2019-03-02 00:00|	2019-02-15|	9999-12-31|	102
+            1002|	2019-03-02 00:00|	2019-04-01 00:00|	2019-01-10|	9999-12-31|	103
+            1002|	2019-04-01 00:00|	9999-12-31 00:00|	2019-01-10|	2019-04-02|	103
+            1002|	2019-04-01 00:00|	9999-12-31 00:00|	2019-04-02|	9999-12-31|	111")
 
 (def color-selected "greenyellow")
 (def color-selected-data "lightgreen")
@@ -30,8 +65,13 @@
 (defn table-string->maps [s]
   (let [[ks & vs] (->> (-> s
                            (str/split #"\n"))
-                       (filter #(not (or (str/starts-with? % "-")
-                                         (str/starts-with? % "+"))))
+                       (filter #(not (or (str/starts-with? % "-") ;; table header bottom-border
+                                         (str/starts-with? % "+") ;; table decorations (mariadb)
+                                         (= % "") ;; empty lines before table
+                                         (and (str/starts-with? % "(") ;; query count
+                                              (= 1 (count (str/split % #"\|"))))
+                                         (= 1 (count (str/split % #"\|"))) ;; misc. catch-all including SQL query lines (fingers crossed)
+                                         )))
                        (map #(if (str/starts-with? % "|")
                                (subs % 1)
                                %))
@@ -68,9 +108,12 @@
     (when-not (:collapsed @state) [:div [:textarea {:style {:width "95%" :height "95%" :overflow-x "scroll" :overflow-y "scroll"}
                                                     :on-change #(reset! state (assoc @state :t (.. % -target -value)))}
                                          (:t @state)]])
-    [:div {:style {:overflow-x "auto" :overflow-y "auto"}}
-     (let [d (table-string->maps (:t @state))
-           ks (keys (first d))]
+    (let [d (table-string->maps (:t @state))
+          ks (keys (first d))]
+      [:div {:style {:overflow-x "auto" :overflow-y "auto"}}
+       (let [description (take-while #(some? %) (str/split (:t @state) #"\n" ))]
+         (when false #_(< 0 (count description))
+           [:p "here trying to display a description / query" (str description) #_ #_ #_(str/split #"\n" (:t @state)) (prn  (count description)) (str/join "\n" description)]))
        (into [:table {:style {:border "1px solid black" :border-collapse "collapse"}} [:tr (for [h ks] [:th {:style {:border "1px solid black" :padding "4pt"}} h])]]
              (for [[i j] (map-indexed vector d)]
                ^{:key (str i j)} [:tr {:onMouseOver #(reset! state (assoc @state :hovered j))
@@ -85,8 +128,9 @@
                                                                    (= j (:hovered @state)) color-hovered
                                                                    (data= j (:hovered @state)) color-hovered-data
                                                                    :else "")}}
-                                  (for [k ks] [:td {:style {:border "1px solid black" :padding "4pt"}} (get j k)])])))
-     ]
+                                  (for [k ks] [:td {:style {:border "1px solid black" :padding "4pt"}} (get j k)])]))
+       [:p (str (count d) " Rows")]
+       ])
     [:div
 
      ;;[:p "x: " (:x @mouse-coordinates)]
@@ -184,65 +228,87 @@
           (assoc x :fill (nth fills xi))]))]))
 
 (defn axes->g [[width height cell-w cell-h sys app]]
-  (apply conj [:g] (concat (for [[si s] (map-indexed vector sys)]
-                             [:g {:transform (str "translate("
-                                                  (+ (* si cell-w) (* -0.025 width))
-                                                  ","
-                                                  (+ height (* 0.075 height))
-                                                  ")")}
-                              [:text {:fill "black"
-                                      :font-size "1.5em"
-                                      :transform-box "fill-box"
-                                      :transform "rotate(30)"}
-                               (str s)]])
-                           (for [[ai a] (map-indexed vector app)]
-                             [:text {:fill "black"
-                                     :font-size "1.5em"
-                                     :x (+ width (* 0.025 width))
-                                     :y (- (- height (* 0.025 height)) (* ai cell-h))}
-                              (str a)]))
-
-         ))
+  (let [bw 1]
+    (apply conj [:g] (concat (for [[si s] (map-indexed vector (truncate-sortable-strings sys))]
+                               (let [x (* si cell-w)
+                                     y 0
+                                     h height]
+                                 [:g
+                                  #_[:line {:style {:stroke-width (str bw "px")
+                                                  :stroke-style "dashed"
+                                                  :stroke "cyan"
+                                                  :opacity "0.5"}
+                                          :x1 x :y1 y :x2 x :y2 (+ y h)}]
+                                  [:g {:transform (str "translate("
+                                                       (+ x (* -0.025 width))
+                                                       ","
+                                                       (+ height (* 0.075 height))
+                                                       ")")}
+                                   [:text {:fill "black"
+                                           :font-size "1.5em"
+                                           :transform-box "fill-box"
+                                           :transform "rotate(30)"}
+                                    (if (= (first s) "9999-12-31")
+                                      "END OF TIME"
+                                      (str (first s))) (str (second s))]]]))
+                             (for [[ai a] (map-indexed vector (truncate-sortable-strings app))]
+                               (let [y (* (dec ai) cell-h)
+                                     h cell-h
+                                     x 0
+                                     w width]
+                                 [:g
+                                  #_[:line {:style {:stroke-width (str bw "px")
+                                                  :stroke-style "dashed"
+                                                  :stroke "cyan"
+                                                  :opacity "0.5"}
+                                          :x1 x :y1 (- (+ y h 2) bw) :x2 (+ x w) :y2 (- (+ y h 2) bw)}]
+                                  [:text {:fill "black"
+                                          :font-size "1.5em"
+                                          :x (+ width (* 0.025 width))
+                                          :y (- (- height (* 0.025 height)) (* ai cell-h))}
+                                   (if (= (first a) "9999-12-31")
+                                     "END OF TIME"
+                                     (str (first a))) (str (second a))]]))))))
 
 (defn history->hiccup [width height color-att entries]
-  (let [[axes normalized-entries] (normalize-entries width height entries)]
-    (->> normalized-entries
-
-         (map (fn [[x y w h e :as entry]]
-                ; (prn entry)
-                ;(prn e (:row e) (:hovered @state))
-                [:g
-                 [:rect {:x x
-                         :y y
-                         :width w
-                         :height h
-                         :onMouseOver #(reset! state (assoc @state :hovered (:row e)))
-                         :onMouseOut #(reset! state (dissoc @state :hovered))
-                         :onMouseUp #(reset! state (if (= (:row e) (:selected @state))
-                                                     (dissoc @state :selected)
-                                                     (assoc @state :selected (:row e))))
-                         :fill (or (cond (= (:row e) (:selected @state)) color-selected
-                                         (data= (:row e) (:selected @state)) color-selected-data
-                                         (= (:row e) (:hovered @state)) color-hovered
-                                         (data= (:row e) (:hovered @state)) color-hovered-data)
-                                   (:fill (:row e))
-                                   (color-att e)
-                                   #_(str "#" (format "%06x" (rand-int 16rFFFFFF))) ;; clj
-                                   (str "#" (.toString (rand-int 16rFFFFFF) 16)))}]
-                 [:line {:style {:stroke-width "4px"
-                                 :stroke-style "dashed"
-                                 :stroke "black"}
-                         :x1 (+ x 2) :y1 y :x2 (+ x 2) :y2 (+ y h)}]
-                 [:line {:style {:stroke-width "4px"
-                                 :stroke-style "dashed"
-                                 :stroke "black"}
-                         :x1 x :y1 (+ y h 2) :x2 (+ x w) :y2 (+ y h 2)}]
-                 #_[:text {:fill "black"
-                           :x (+ x (* 0.05 height))
-                           :y (+ (- h (* 0.05 height)) y)}
-                    (str (or (:fill (:row e))
-                             (:fill e)))]]))
-         (apply conj [:g (axes->g axes)]))))
+  (let [bw 4
+        [axes normalized-entries] (normalize-entries width height entries)]
+    (-> [(map (fn [[x y w h e :as entry]]
+                                        ; (prn entry)
+                                        ;(prn e (:row e) (:hovered @state))
+                 [:g
+                  {:onMouseOver #(reset! state (assoc @state :hovered (:row e)))
+                   :onMouseOut #(reset! state (dissoc @state :hovered))
+                   :onMouseUp #(reset! state (if (= (:row e) (:selected @state))
+                                               (dissoc @state :selected)
+                                               (assoc @state :selected (:row e))))}
+                  [:rect {:x x
+                          :y y
+                          :width w
+                          :height h
+                          :fill (or (cond (= (:row e) (:selected @state)) color-selected
+                                          (data= (:row e) (:selected @state)) color-selected-data
+                                          (= (:row e) (:hovered @state)) color-hovered
+                                          (data= (:row e) (:hovered @state)) color-hovered-data)
+                                    (:fill (:row e))
+                                    (color-att e)
+                                    #_(str "#" (format "%06x" (rand-int 16rFFFFFF))) ;; clj
+                                    (str "#" (.toString (rand-int 16rFFFFFF) 16)))}]
+                  [:line {:style {:stroke-width (str bw "px")
+                                  :stroke-style "dashed"
+                                  :stroke "black"}
+                          :x1 (+ x 2) :y1 y :x2 (+ x 2) :y2 (+ y h)}]
+                  [:line {:style {:stroke-width (str bw "px")
+                                  :stroke-style "dashed"
+                                  :stroke "black"}
+                          :x1 x :y1 (- (+ y h 2) bw) :x2 (+ x w) :y2 (- (+ y h 2) bw)}]
+                  #_[:text {:fill "black"
+                            :x (+ x (* 0.05 height))
+                            :y (+ (- h (* 0.05 height)) y)}
+                     (str (or (:fill (:row e))
+                              (:fill e)))]])
+               normalized-entries)]
+         (concat [[:g (axes->g axes)]]))))
 
 
 (defn history->tt-vt [width height color-att history]
