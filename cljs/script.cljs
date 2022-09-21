@@ -44,18 +44,21 @@
              orange | 2 | 4 | 1 | 2
              lightpink | 1 | 2 | 1 | 2")
 
-(def sample "id	| sys_start |	sys_end |	app_start |	app_end |	price
-            1002 |	2019-01-01 00:00 |	2019-02-09 00:00|	2019-01-05|	9999-12-31|	100
-            1002|	2019-02-09 00:00|	9999-12-31 00:00|	2019-01-05|	2019-01-10|	100
-            1002|	2019-02-09 00:00|	2019-03-02 00:00|	2019-01-10|	2019-02-08|	100
-            1002|	2019-02-09 00:00|	2019-02-10 00:00|	2019-02-08|	9999-12-31|	105
-            1002|	2019-02-10 00:00|	2019-03-02 00:00|	2019-02-08|	2019-02-15|	105
-            1002|	2019-02-10 00:00|	2019-02-12 00:00|	2019-02-15|	2019-02-17|	105
-            1002|	2019-02-10 00:00|	2019-02-12 00:00|	2019-02-17|	9999-12-31|	103
-            1002|	2019-02-12 00:00|	2019-03-02 00:00|	2019-02-15|	9999-12-31|	102
-            1002|	2019-03-02 00:00|	2019-04-01 00:00|	2019-01-10|	9999-12-31|	103
-            1002|	2019-04-01 00:00|	9999-12-31 00:00|	2019-01-10|	2019-04-02|	103
-            1002|	2019-04-01 00:00|	9999-12-31 00:00|	2019-04-02|	9999-12-31|	111")
+(def sample "Price (and tax) scheduling data example
+Source: https://bitemporal.net/generate-bitemporal-intervals/
+
+id | price | sys_start | sys_end | app_start | app_end
+1002| 100 | 2019-01-01| 2019-02-09| 2019-01-05| 9999-12-31
+1002| 100 | 2019-02-09| 9999-12-31| 2019-01-05| 2019-01-10
+1002| 100 | 2019-02-09| 2019-03-02| 2019-01-10| 2019-02-08
+1002| 105 | 2019-02-09| 2019-02-10| 2019-02-08| 9999-12-31
+1002| 105 | 2019-02-10| 2019-03-02| 2019-02-08| 2019-02-15
+1002| 105 | 2019-02-10| 2019-02-12| 2019-02-15| 2019-02-17
+1002| 103 | 2019-02-10| 2019-02-12| 2019-02-17| 9999-12-31
+1002| 102 | 2019-02-12| 2019-03-02| 2019-02-15| 9999-12-31
+1002| 103 | 2019-03-02| 2019-04-01| 2019-01-10| 9999-12-31
+1002| 103 | 2019-04-01| 9999-12-31| 2019-01-10| 2019-04-02
+1002| 111 | 2019-04-01| 9999-12-31| 2019-04-02| 9999-12-31")
 
 (def color-selected "greenyellow")
 (def color-selected-data "lightgreen")
@@ -86,7 +89,7 @@
 
 ;; row_start, row_end (system time aliases)
 
-(def state (r/atom {:clicks 0 :t sample :collapsed true}))
+(def state (r/atom {:clicks 0 :t sample :collapsed true :truncate true}))
 
 (def mouse-coordinates (r/atom {:x 100 :y 100}))
 
@@ -96,47 +99,75 @@
 
 
 (defn my-component [viz]
-  [:div
-   {:onMouseMove (fn [event]
-                   (reset! mouse-coordinates {:x (.-clientX event) :y (.-clientY event)}))}
-   [:p [:a {:href "#"
-            :onMouseUp #(swap! state #(update % :collapsed not))
-            } (if (:collapsed @state)
-                "Show Textarea"
-                "Hide Textarea")]]
-   [:div {:style {:display "grid" :grid-template-columns (if (:collapsed @state) "50% 50%" "30% 30% 40%") :grid-template-rows "80vh"}}
-    (when-not (:collapsed @state) [:div [:textarea {:style {:width "95%" :height "95%" :overflow-x "scroll" :overflow-y "scroll"}
-                                                    :on-change #(reset! state (assoc @state :t (.. % -target -value)))}
-                                         (:t @state)]])
-    (let [d (table-string->maps (:t @state))
-          ks (keys (first d))]
-      [:div {:style {:overflow-x "auto" :overflow-y "auto"}}
-       (let [description (take-while #(some? %) (str/split (:t @state) #"\n" ))]
-         (when false #_(< 0 (count description))
-           [:p "here trying to display a description / query" (str description) #_ #_ #_(str/split #"\n" (:t @state)) (prn  (count description)) (str/join "\n" description)]))
-       (into [:table {:style {:border "1px solid black" :border-collapse "collapse"}} [:tr (for [h ks] [:th {:style {:border "1px solid black" :padding "4pt"}} h])]]
-             (for [[i j] (map-indexed vector d)]
-               ^{:key (str i j)} [:tr {:onMouseOver #(reset! state (assoc @state :hovered j))
-                                       :onMouseOut #(reset! state (dissoc @state :hovered))
-                                       :onMouseUp #(reset! state (if (= j (:selected @state))
-                                                                   (dissoc @state :selected)
-                                                                   (assoc @state :selected j)))
-                                       :style {:cursor "pointer"
-                                               :background-color (cond
-                                                                   (= j (:selected @state)) color-selected
-                                                                   (data= j (:selected @state)) color-selected-data
-                                                                   (= j (:hovered @state)) color-hovered
-                                                                   (data= j (:hovered @state)) color-hovered-data
-                                                                   :else "")}}
-                                  (for [k ks] [:td {:style {:border "1px solid black" :padding "4pt"}} (get j k)])]))
-       [:p (str (count d) " Rows")]
-       ])
+  (let [wide (< 1.2 (/ (.. js/window -innerWidth)
+                       (.. js/window -innerHeight)))]
     [:div
+     {:onMouseMove (fn [event]
+                     (reset! mouse-coordinates {:x (.-clientX event) :y (.-clientY event)}))}
+     [:p
+      [:a {:href "#"
+           :onMouseUp #(swap! state #(update % :collapsed not))}
+       (if (:collapsed @state)
+         "Show Textarea"
+         "Hide Textarea")]
+      " | "
+      [:a {:href "#"
+           :onMouseUp #(swap! state #(update % :truncate not))}
+       (if (:truncate @state)
+         "Full timestamps"
+         "Truncate timestamps")]]
+     (into  [:div {:style {:display "grid" :grid-template-columns (if wide
+                                                                    (if (:collapsed @state) "50% 50%" "30% 30% 40%")
+                                                                    "95vw")
+                           :grid-template-rows (if wide
+                                                 "70vh"
+                                                 (if (:collapsed @state) "35vh 35vh" "30vh 20vh 20vh"))}}]
+            (let [d (table-string->maps (:t @state))
+                  ks (keys (first d))
+                  textarea (when-not (:collapsed @state) [:div [:textarea {:style {:width "95%" :height "95%" :overflow-x "scroll" :overflow-y "scroll"}
+                                                                           :on-change #(reset! state (assoc @state :t (.. % -target -value)))}
+                                                                (:t @state)]])
+                  rows (map map->row (table-string->maps (:t @state)))
+                  vizz (if (or (< (count rows) 1)
+                               (not (every? #(and (some? (:app-start %))
+                                                  (some? (:app-end %))
+                                                  (some? (:sys-start %))
+                                                  (some? (:sys-end %))) rows)))
+                         [:div [:p {:style {:padding "1em"}} (str "ERROR: " (if (< (count rows) 1)
+                                                    "No Rows"
+                                                    "4 timestamp columns required (e.g. app_start, app_end, sys_start, sys_end)"))]]
+                         [:div
 
-     ;;[:p "x: " (:x @mouse-coordinates)]
-     ;;[:p "y: " (:y @mouse-coordinates)]
-     (viz (map map->row (table-string->maps (:t @state))))]]
-   [:p "Created for " [:a {:href "https://xtdb.com"} "XTDB"] " using " [:a {:href "https://github.com/babashka/scittle"} "Scittle"]]])
+                          ;;[:p "x: " (:x @mouse-coordinates)]
+                          ;;[:p "y: " (:y @mouse-coordinates)]
+                          (viz rows)])
+                  table [:div {:style {:overflow-x "auto" :overflow-y "auto" :margin-left "auto" :margin-right "auto" :align-self "center"}}
+                         (let [description (take-while #(and (not= "" %)
+                                                             (= 1 (count (str/split % #"\|")))) (str/split (:t @state) #"\n" ))]
+                           (when (< 0 (count description))
+                             [:p {:style {:white-space "pre-wrap"}}(str/join "\n" description)]))
+                         (into [:table {:style {:border "1px solid black" :border-collapse "collapse"}} [:tr (for [h ks] [:th {:style {:border "1px solid black" :padding "4pt"}} h])]]
+                               (for [[i j] (map-indexed vector d)]
+                                 ^{:key (str i j)} [:tr {:onMouseOver #(reset! state (assoc @state :hovered j))
+                                                         :onMouseOut #(reset! state (dissoc @state :hovered))
+                                                         :onMouseUp #(reset! state (if (= j (:selected @state))
+                                                                                     (dissoc @state :selected)
+                                                                                     (assoc @state :selected j)))
+                                                         :style {:cursor "pointer"
+                                                                 :background-color (cond
+                                                                                     (= j (:selected @state)) color-selected
+                                                                                     (data= j (:selected @state)) color-selected-data
+                                                                                     (= j (:hovered @state)) color-hovered
+                                                                                     (data= j (:hovered @state)) color-hovered-data
+                                                                                     :else "")}}
+                                                    (for [k ks] [:td {:style {:border "1px solid black" :padding "4pt"}} (get j k)])]))
+                         [:p (str (count d) " Rows")]
+                         ]]
+              (if wide
+                [textarea table vizz]
+                [vizz table textarea])
+              ))
+     [:p "Created for " [:a {:href "https://xtdb.com"} "XTDB"] " using " [:a {:href "https://github.com/babashka/scittle"} "Scittle"]]]))
 
 
 #_(rdom/render [my-component] (.getElementById js/document "app"))
@@ -249,8 +280,8 @@
                                            :transform-box "fill-box"
                                            :transform "rotate(30)"}
                                     (if (= (first s) "9999-12-31")
-                                      "END OF TIME"
-                                      (str (first s))) (str (second s))]]]))
+                                      "END OF SYSTEM TIME"
+                                      (str (first s) (if (:truncate @state) (when (not= "" (second s)) " ...") (second s))))]]]))
                              (for [[ai a] (map-indexed vector (truncate-sortable-strings app))]
                                (let [y (* (dec ai) cell-h)
                                      h cell-h
@@ -267,8 +298,8 @@
                                           :x (+ width (* 0.025 width))
                                           :y (- (- height (* 0.025 height)) (* ai cell-h))}
                                    (if (= (first a) "9999-12-31")
-                                     "END OF TIME"
-                                     (str (first a))) (str (second a))]]))))))
+                                     "END OF APPLICATION TIME"
+                                     (str (first a) (if (:truncate @state) (when (not= "" (second a)) " ...") (second a))))]]))))))
 
 (defn history->hiccup [width height color-att entries]
   (let [bw 4
@@ -276,39 +307,39 @@
     (-> [(map (fn [[x y w h e :as entry]]
                                         ; (prn entry)
                                         ;(prn e (:row e) (:hovered @state))
-                 [:g
-                  {:onMouseOver #(reset! state (assoc @state :hovered (:row e)))
-                   :onMouseOut #(reset! state (dissoc @state :hovered))
-                   :onMouseUp #(reset! state (if (= (:row e) (:selected @state))
-                                               (dissoc @state :selected)
-                                               (assoc @state :selected (:row e))))}
-                  [:rect {:x x
-                          :y y
-                          :width w
-                          :height h
-                          :fill (or (cond (= (:row e) (:selected @state)) color-selected
-                                          (data= (:row e) (:selected @state)) color-selected-data
-                                          (= (:row e) (:hovered @state)) color-hovered
-                                          (data= (:row e) (:hovered @state)) color-hovered-data)
-                                    (:fill (:row e))
-                                    (color-att e)
-                                    #_(str "#" (format "%06x" (rand-int 16rFFFFFF))) ;; clj
-                                    (str "#" (.toString (rand-int 16rFFFFFF) 16)))}]
-                  [:line {:style {:stroke-width (str bw "px")
-                                  :stroke-style "dashed"
-                                  :stroke "black"}
-                          :x1 (+ x 2) :y1 y :x2 (+ x 2) :y2 (+ y h)}]
-                  [:line {:style {:stroke-width (str bw "px")
-                                  :stroke-style "dashed"
-                                  :stroke "black"}
-                          :x1 x :y1 (- (+ y h 2) bw) :x2 (+ x w) :y2 (- (+ y h 2) bw)}]
-                  #_[:text {:fill "black"
-                            :x (+ x (* 0.05 height))
-                            :y (+ (- h (* 0.05 height)) y)}
-                     (str (or (:fill (:row e))
-                              (:fill e)))]])
-               normalized-entries)]
-         (concat [[:g (axes->g axes)]]))))
+                [:g
+                 {:onMouseOver #(reset! state (assoc @state :hovered (:row e)))
+                  :onMouseOut #(reset! state (dissoc @state :hovered))
+                  :onMouseUp #(reset! state (if (= (:row e) (:selected @state))
+                                              (dissoc @state :selected)
+                                              (assoc @state :selected (:row e))))}
+                 [:rect {:x x
+                         :y y
+                         :width w
+                         :height h
+                         :fill (or (cond (= (:row e) (:selected @state)) color-selected
+                                         (data= (:row e) (:selected @state)) color-selected-data
+                                         (= (:row e) (:hovered @state)) color-hovered
+                                         (data= (:row e) (:hovered @state)) color-hovered-data)
+                                   (:fill (:row e))
+                                   (color-att e)
+                                   #_(str "#" (format "%06x" (rand-int 16rFFFFFF))) ;; clj
+                                   (str "#" (.toString (rand-int 16rFFFFFF) 16)))}]
+                 [:line {:style {:stroke-width (str bw "px")
+                                 :stroke-style "dashed"
+                                 :stroke "black"}
+                         :x1 (+ x 2) :y1 y :x2 (+ x 2) :y2 (+ y h)}]
+                 [:line {:style {:stroke-width (str bw "px")
+                                 :stroke-style "dashed"
+                                 :stroke "black"}
+                         :x1 x :y1 (- (+ y h 2) bw) :x2 (+ x w) :y2 (- (+ y h 2) bw)}]
+                 #_[:text {:fill "black"
+                           :x (+ x (* 0.05 height))
+                           :y (+ (- h (* 0.05 height)) y)}
+                    (str (or (:fill (:row e))
+                             (:fill e)))]])
+              normalized-entries)]
+        (concat [[:g (axes->g axes)]]))))
 
 
 (defn history->tt-vt [width height color-att history]
