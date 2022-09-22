@@ -126,8 +126,8 @@ id | price | sys_start | sys_end | app_start | app_end
                                                                     (if (:collapsed @state) "50% 50%" "30% 30% 40%")
                                                                     "95vw")
                            :grid-template-rows (if wide
-                                                 "70vh"
-                                                 (if (:collapsed @state) "35vh 35vh" "30vh 20vh 20vh"))}}]
+                                                 "85vh"
+                                                 (if (:collapsed @state) "45vh 40vh" "40vh 25vh 20vh"))}}]
             (let [d (table-string->maps (:t @state))
                   ks (keys (first d))
                   textarea (when-not (:collapsed @state) [:div [:textarea {:style {:width "95%" :height "95%" :overflow-x "scroll" :overflow-y "scroll"}
