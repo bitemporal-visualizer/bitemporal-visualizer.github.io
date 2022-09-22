@@ -89,7 +89,7 @@ id | price | sys_start | sys_end | app_start | app_end
 
 ;; row_start, row_end (system time aliases)
 
-(def state (r/atom {:clicks 0 :t sample :collapsed true :truncate true}))
+(def state (r/atom {:clicks 0 :t sample :collapsed true :truncate true :about false}))
 
 (def mouse-coordinates (r/atom {:x 100 :y 100}))
 
@@ -115,7 +115,13 @@ id | price | sys_start | sys_end | app_start | app_end
            :onMouseUp #(swap! state #(update % :truncate not))}
        (if (:truncate @state)
          "Full timestamps"
-         "Truncate timestamps")]]
+         "Truncate timestamps")]
+      " | "
+      [:a {:href "#"
+           :onMouseUp #(swap! state #(update % :about not))}
+       (if (:about @state)
+         "Hide About"
+         "Show About")]]
      (into  [:div {:style {:display "grid" :grid-template-columns (if wide
                                                                     (if (:collapsed @state) "50% 50%" "30% 30% 40%")
                                                                     "95vw")
@@ -141,7 +147,7 @@ id | price | sys_start | sys_end | app_start | app_end
                           ;;[:p "x: " (:x @mouse-coordinates)]
                           ;;[:p "y: " (:y @mouse-coordinates)]
                           (viz rows)])
-                  table [:div {:style {:overflow-x "auto" :overflow-y "auto" :margin-left "auto" :margin-right "auto" :align-self "center"}}
+                  table [:div {:style {:overflow-x "auto" :overflow-y "auto" :margin-left "auto" :margin-right "auto" #_ #_:align-self "center"}}
                          (let [description (take-while #(and (not= "" %)
                                                              (= 1 (count (str/split % #"\|")))) (str/split (:t @state) #"\n" ))]
                            (when (< 0 (count description))
@@ -167,7 +173,11 @@ id | price | sys_start | sys_end | app_start | app_end
                 [textarea table vizz]
                 [vizz table textarea])
               ))
-     [:p "Created for " [:a {:href "https://xtdb.com"} "XTDB"] " using " [:a {:href "https://github.com/babashka/scittle"} "Scittle"]]]))
+     (when (:about @state)
+       [:div
+        [:p "Created for " [:a {:href "https://xtdb.com"} "XTDB"] " using " [:a {:href "https://github.com/babashka/scittle"} "Scittle"]]
+        [:p "Note that the tool doesn't detect or prevent overlapping (or otherwise invalid) regions"]
+        [:p "This tool was originally created by the XTDB team but is open to ideas and feature requests (and contributions!) that might be useful with other databases also. Please feel free to open " [:a {:href "https://github.com/bitemporal-visualizer/bitemporal-visualizer.github.io/issues"} "issues"] "."]])]))
 
 
 #_(rdom/render [my-component] (.getElementById js/document "app"))
@@ -280,7 +290,7 @@ id | price | sys_start | sys_end | app_start | app_end
                                            :transform-box "fill-box"
                                            :transform "rotate(30)"}
                                     (if (= (first s) "9999-12-31")
-                                      "END OF SYSTEM TIME"
+                                      "∞ System Time"
                                       (str (first s) (if (:truncate @state) (when (not= "" (second s)) " ...") (second s))))]]]))
                              (for [[ai a] (map-indexed vector (truncate-sortable-strings app))]
                                (let [y (* (dec ai) cell-h)
@@ -298,7 +308,7 @@ id | price | sys_start | sys_end | app_start | app_end
                                           :x (+ width (* 0.025 width))
                                           :y (- (- height (* 0.025 height)) (* ai cell-h))}
                                    (if (= (first a) "9999-12-31")
-                                     "END OF APPLICATION TIME"
+                                     "∞ Application Time"
                                      (str (first a) (if (:truncate @state) (when (not= "" (second a)) " ...") (second a))))]]))))))
 
 (defn history->hiccup [width height color-att entries]
@@ -345,7 +355,7 @@ id | price | sys_start | sys_end | app_start | app_end
 (defn history->tt-vt [width height color-att history]
   ; (prn history) (prn sample)
   [:svg
-   {:width "100%" :height "80%" :viewBox (str "-30 -30 " width " " height)}
+   {:width "100%" :height "100%" :viewBox (str "10 -30 " (+ width 100) " " (+ height 100))}
    (history->hiccup
      (/ width 1.2 1.0)
      (/ height 1.4 1.0)
@@ -354,7 +364,7 @@ id | price | sys_start | sys_end | app_start | app_end
 
 (defn my-component2 []
   [:div
-   [my-component (partial history->tt-vt 400 400 :fill)]
+   [my-component (partial history->tt-vt #_ #_ (/ (.. js/window -innerWidth) 3) (/ (.. js/window -innerHeight) 3) 400 400 :fill)]
    ])
 
 (rdom/render [my-component2] (.getElementById js/document "app"))
