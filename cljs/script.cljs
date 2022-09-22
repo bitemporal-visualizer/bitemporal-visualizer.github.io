@@ -80,11 +80,17 @@ id | price | sys_start | sys_end | app_start | app_end
                                %))
                        (map #(map str/trim (str/split % #"\|"))))]
     (map #(zipmap (map keyword ks) %) vs)))
+
+(defn strip-quotes [s]
+  (if (= (first s) "\"")
+    (subs s 1 (dec (count s)))
+    s))
+
 (defn map->row [m]
-  (assoc {:app-start (or (:application_time_start m) (:app_start m))
-          :app-end (or (:application_time_end m) (:app_end m))
-          :sys-start (or (:system_time_start m) (:sys_start m))
-          :sys-end (or (:system_time_end m) (:sys_end m))}
+  (assoc {:app-start (strip-quotes (or (:application_time_start m) (:app_start m)))
+          :app-end (strip-quotes (or (:application_time_end m) (:app_end m)))
+          :sys-start (strip-quotes (or (:system_time_start m) (:sys_start m)))
+          :sys-end (strip-quotes (or (:system_time_end m) (:sys_end m)))}
          :row m))
 
 ;; row_start, row_end (system time aliases)
@@ -289,7 +295,7 @@ id | price | sys_start | sys_end | app_start | app_end
                                            :font-size "1.5em"
                                            :transform-box "fill-box"
                                            :transform "rotate(30)"}
-                                    (if (= (first s) "9999-12-31")
+                                    (if (= (subs (first s) 0 10) "9999-12-31")
                                       "∞ System Time"
                                       (str (first s) (if (:truncate @state) (when (not= "" (second s)) " ...") (second s))))]]]))
                              (for [[ai a] (map-indexed vector (truncate-sortable-strings app))]
@@ -307,7 +313,7 @@ id | price | sys_start | sys_end | app_start | app_end
                                           :font-size "1.5em"
                                           :x (+ width (* 0.025 width))
                                           :y (- (- height (* 0.025 height)) (* ai cell-h))}
-                                   (if (= (first a) "9999-12-31")
+                                   (if (= (subs (first a) 0 10) "9999-12-31")
                                      "∞ Application Time"
                                      (str (first a) (if (:truncate @state) (when (not= "" (second a)) " ...") (second a))))]]))))))
 
