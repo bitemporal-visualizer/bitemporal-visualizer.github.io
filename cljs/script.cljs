@@ -36,7 +36,7 @@
 ;;(truncate-sortable-strings ["bce456" "abcd789" "abc" "abce0123" "bcd123" "bcf" "bcd011"])
 ;;=>("abc" "abcd" "abce" "bcd" "bcd1" "bce" "bcf")
 
-(def sample1 "filll | app_start | app_end | sys_start | sys_end
+(def sample1 "fill | app_start | app_end | sys_start | sys_end
              ------------+-------------+-------
              red | 3 | 4 | 0 | 1
              pink | 1 | 3 | 0 | 1
@@ -65,10 +65,16 @@ id | price | sys_start | sys_end | app_start | app_end
 (def color-hovered "lightblue")
 (def color-hovered-data "lightsteelblue")
 
+(defn strip-colon [s]
+  (if (= (first s) ":")
+    (subs s 1)
+    s))
+
 (defn table-string->maps [s]
   (let [[ks & vs] (->> (-> s
                            (str/split #"\n"))
                        (filter #(not (or (str/starts-with? % "-") ;; table header bottom-border
+                                         (str/starts-with? % "|-") ;; table header bottom-border
                                          (str/starts-with? % "+") ;; table decorations (mariadb)
                                          (= % "") ;; empty lines before table
                                          (and (str/starts-with? % "(") ;; query count
@@ -79,7 +85,7 @@ id | price | sys_start | sys_end | app_start | app_end
                                (subs % 1)
                                %))
                        (map #(map str/trim (str/split % #"\|"))))]
-    (map #(zipmap (map keyword ks) %) vs)))
+    (map #(zipmap (map (comp keyword strip-colon) ks) %) vs)))
 
 (defn strip-quotes [s]
   (if (= (first s) "\"")
