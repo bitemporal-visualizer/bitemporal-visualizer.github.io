@@ -101,7 +101,17 @@ id | price | sys_start | sys_end | app_start | app_end
 
 ;; row_start, row_end (system time aliases)
 
-(def state (r/atom {:clicks 0 :t sample :collapsed true :truncate true :about false}))
+(def state (r/atom {:t (or (->> js/window
+                                (.-location)
+                                (.-search)
+                                (new js/URLSearchParams)
+                                seq
+                                first
+                                second)
+                           sample)
+                    :collapsed true
+                    :truncate true
+                    :about false}))
 
 (def mouse-coordinates (r/atom {:x 100 :y 100}))
 
